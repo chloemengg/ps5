@@ -51,11 +51,46 @@ alt.renderers.enable("png")
 ```
 
 
+```{python}
+from bs4 import BeautifulSoup
+import requests
+from selenium import webdriver
+```
+
+
 ## Step 1: Develop initial scraper and crawler
 
 ### 1. Scraping (PARTNER 1)
 
 ```{python}
+url = "https://oig.hhs.gov/fraud/enforcement/"
+
+response = requests.get(url)
+soup = BeautifulSoup(response.text, 'html.parser')
+
+enforcement_data = []
+
+enforcements = soup.find_all('div', class_='enforcement-action')
+
+for action in enforcements:
+    title = action.find('a').text.strip()  # Get title
+    date = action.find('time').text.strip()  # Get date
+    category = action.find('span', class_='category').text.strip()  # Get category
+    link = action.find('a')['href']  # Get link
+    link = f"https://oig.hhs.gov{link}" if not link.startswith("http") else link  # Ensure complete link
+
+  
+    enforcement_data.append({
+        "Title": title,
+        "Date": date,
+        "Category": category,
+        "Link": link
+    })
+
+
+df = pd.DataFrame(enforcement_data)
+
+print(df)
 
 ```
 
