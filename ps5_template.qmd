@@ -63,35 +63,40 @@ from selenium import webdriver
 ### 1. Scraping (PARTNER 1)
 
 ```{python}
+
 url = "https://oig.hhs.gov/fraud/enforcement/"
 
 response = requests.get(url)
 soup = BeautifulSoup(response.text, 'html.parser')
+print(soup)
 
-enforcement_data = []
+titles = []
+dates = []
+categories = []
+links = []
 
-enforcements = soup.find_all('div', class_='enforcement-action')
+for action in soup.select('li.usa-card.card--list.pep-card--minimal'):
+    title_tag = action.select_one('h2.usa-card__heading a')
+    title = title_tag.get_text(strip=True)
+    link = f"https://oig.hhs.gov{title_tag['href']}"
 
-for action in enforcements:
-    title = action.find('a').text.strip()  # Get title
-    date = action.find('time').text.strip()  # Get date
-    category = action.find('span', class_='category').text.strip()  # Get category
-    link = action.find('a')['href']  # Get link
-    link = f"https://oig.hhs.gov{link}" if not link.startswith("http") else link  # Ensure complete link
+    date = action.select_one('span.text-base-dark').get_text(strip=True)
+    category = action.select_one('li.usa-tag').get_text(strip=True)
+    
+    titles.append(title)
+    dates.append(date)
+    categories.append(category)
+    links.append(link)
 
-  
-    enforcement_data.append({
-        "Title": title,
-        "Date": date,
-        "Category": category,
-        "Link": link
-    })
+data = {
+    "Title": titles,
+    "Date": dates,
+    "Category": categories,
+    "Link": links
+}
+df = pd.DataFrame(data)
 
-
-df = pd.DataFrame(enforcement_data)
-
-print(df)
-
+df
 ```
 
   
