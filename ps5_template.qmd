@@ -54,7 +54,6 @@ alt.renderers.enable("png")
 ```{python}
 from bs4 import BeautifulSoup
 import requests
-from selenium import webdriver
 ```
 
 
@@ -103,7 +102,63 @@ df
 ### 2. Crawling (PARTNER 1)
 
 ```{python}
+import re 
 
+pd.set_option('display.max_rows', None)
+pd.set_option('display.max_columns', None)
+pd.set_option('display.width', None)
+
+url = "https://oig.hhs.gov/fraud/enforcement/"
+
+response = requests.get(url)
+soup = BeautifulSoup(response.text, 'html.parser')
+
+titles = []
+dates = []
+categories = []
+links = []
+agencies = []
+
+agency_pattern = re.compile(r"(U\.S\. Attorney’s Office|Department of Justice|FBI|Office of Inspector General|Attorney General|District Attorney)", re.IGNORECASE)
+
+for action in soup.select('li.usa-card.card--list.pep-card--minimal'):
+    title_tag = action.select_one('h2.usa-card__heading a')
+    title = title_tag.get_text(strip=True)
+    link = f"https://oig.hhs.gov{title_tag['href']}"
+
+    date = action.select_one('span.text-base-dark').get_text(strip=True)
+    category = action.select_one('li.usa-tag').get_text(strip=True)
+    
+    titles.append(title)
+    dates.append(date)
+    categories.append(category)
+    links.append(link)
+
+    action_response = requests.get(link)
+    action_soup = BeautifulSoup(action_response.text, 'html.parser')
+
+    agency_text = "Agency not found"
+    paragraphs = action_soup.find_all('p', limit=5)  
+
+    for paragraph in paragraphs:
+        text = paragraph.get_text(strip=True)
+        if agency_pattern.search(text):
+            agency_text = text
+            break
+    
+    agencies.append(agency_text)
+
+    time.sleep(1)
+data = {
+    "Title": titles,
+    "Date": dates,
+    "Category": categories,
+    "Link": links,
+    "Agency": agencies
+}
+df = pd.DataFrame(data)
+
+print(df)
 ```
 
 ## Step 2: Making the scraper dynamic
@@ -111,18 +166,248 @@ df
 ### 1. Turning the scraper into a function 
 
 * a. Pseudo-Code (PARTNER 2)
+1. Input Validation:
+Check if the year is greater than or equal to 2013. If the year is less than 2013, print a reminder to restrict the year to >= 2013.
 
+2. URL Construction:
+Based on the input month and year, construct the starting URL for scraping (e.g., page 1, page 2, etc.).
+Loop through multiple pages to gather all the data.
+
+3. Scraping and Storing Data:
+Scrape the enforcement actions from each page (titles, dates, categories, links, agencies).
+Store the scraped data in lists.
+After scraping all pages, save the data into a DataFrame.
+
+4. Save to CSV:
+After scraping all enforcement actions, save the data to a .csv file named enforcement_actions_year_month.csv.
 
 * b. Create Dynamic Scraper (PARTNER 2)
 
 ```{python}
+from datetime import datetime
 
+def scrape_enforcement_actions(year, month):
+    if year < 2013:
+        print("Please restrict to year >= 2013, as only enforcement actions after 2013 are listed.")
+        return
+    
+    base_url = "https://oig.hhs.gov/fraud/enforcement/"
+    start_date = datetime(year, month, 1)
+    current_date = datetime.now()
+    
+    if start_date > current_date:
+        print("The start date cannot be in the future.")
+        return
+
+    titles = []
+    dates = []
+    categories = []
+    links = []
+    agencies = []
+    
+    page_number = 1
+    while True:
+        print(f"Scraping page {page_number}...")
+        
+        page_url = f"{base_url}?page={page_number}"
+        response = requests.get(page_url)
+        
+        if response.status_code != 200:
+            print("Error fetching page:", page_url)
+            break
+        
+        soup = BeautifulSoup(response.text, 'html.parser')
+
+        actions = soup.select('li.usa-card.card--list.pep-card--minimal')
+        if not actions:
+            print("No more actions found on this page.")
+            break
+        
+        for action in actions:
+            title_tag = action.select_one('h2.usa-card__heading a')
+            title = title_tag.get_text(strip=True)
+            link = f"https://oig.hhs.gov{title_tag['href']}"
+
+            date = action.select_one('span.text-base-dark').get_text(strip=True)
+            category = action.select_one('li.usa-tag').get_text(strip=True)
+            
+            titles.append(title)
+            dates.append(date)
+            categories.append(category)
+            links.append(link)
+
+            action_response = requests.get(link)
+            action_soup = BeautifulSoup(action_response.text, 'html.parser')
+
+            agency_text = "Agency not found"
+            paragraphs = action_soup.find_all('p', limit=5)  
+            for paragraph in paragraphs:
+                text = paragraph.get_text(strip=True)
+                if "U.S. Attorney’s Office" in text or "Department of Justice" in text:
+                    agency_text = text
+                    break
+
+            agencies.append(agency_text)
+
+            time.sleep(1)
+        
+        next_page = soup.select_one('a[rel="next"]')
+        if next_page:
+            page_number += 1
+        else:
+            break
+    
+    data = {
+        "Title": titles,
+        "Date": dates,
+        "Category": categories,
+        "Link": links,
+        "Agency": agencies
+    }
+    df = pd.DataFrame(data)
+
+    csv_filename = f"enforcement_actions_{year}_{month}.csv"
+    df.to_csv(csv_filename, index=False)
+
+    print(f"Data saved to {csv_filename}")
+    return df
+
+scrape_enforcement_actions(2023, 1)
 ```
 
 * c. Test Partner's Code (PARTNER 1)
 
 ```{python}
+def scrape_enforcement_actions(year, month):
+    # Step 1: Validate input year
+    if year < 2013:
+        print("Please restrict to year >= 2013, as only enforcement actions after 2013 are listed.")
+        return
+    
+    # Step 2: Set up the base URL and prepare for scraping
+    base_url = "https://oig.hhs.gov/fraud/enforcement/"
+    start_date = datetime(year, month, 1)
+    current_date = datetime.now()
+    
+    # If the year and month are current or later, set today's date as the end
+    if start_date > current_date:
+        print("The start date cannot be in the future.")
+        return
 
+    # Initialize lists to store scraped data
+    titles = []
+    dates = []
+    categories = []
+    links = []
+    agencies = []
+    
+    # Initialize page number and loop over pages
+    page_number = 1
+    while True:
+        print(f"Scraping page {page_number}...")
+        
+        # Build the URL for the current page
+        page_url = f"{base_url}?page={page_number}"
+        response = requests.get(page_url)
+        
+        if response.status_code != 200:
+            print("Error fetching page:", page_url)
+            break
+        
+        soup = BeautifulSoup(response.text, 'html.parser')
+
+        # Find all enforcement actions on this page
+        actions = soup.select('li.usa-card.card--list.pep-card--minimal')
+        if not actions:
+            print("No more actions found on this page.")
+            break
+        
+        # Scrape each enforcement action on the current page
+        for action in actions:
+            title_tag = action.select_one('h2.usa-card__heading a')
+            title = title_tag.get_text(strip=True)
+            link = f"https://oig.hhs.gov{title_tag['href']}"
+
+            date = action.select_one('span.text-base-dark').get_text(strip=True)
+            category = action.select_one('li.usa-tag').get_text(strip=True)
+            
+            titles.append(title)
+            dates.append(date)
+            categories.append(category)
+            links.append(link)
+
+            # Now visit the link to get the agency information
+            action_response = requests.get(link)
+            action_soup = BeautifulSoup(action_response.text, 'html.parser')
+
+            # Attempt to locate the agency information
+            agency_text = "Agency not found"
+            paragraphs = action_soup.find_all('p', limit=5)  # Limit to first few paragraphs
+
+            for paragraph in paragraphs:
+                text = paragraph.get_text(strip=True)
+                if "U.S. Attorney’s Office" in text or "Department of Justice" in text:
+                    agency_text = text
+                    break
+
+            agencies.append(agency_text)
+
+            # Optional sleep to avoid overwhelming the server
+            time.sleep(1)
+        
+        # Check if there is a "Next" page
+        next_page = soup.select_one('a[rel="next"]')
+        if next_page:
+            page_number += 1
+        else:
+            break
+    
+    # Step 3: Save to DataFrame
+    data = {
+        "Title": titles,
+        "Date": dates,
+        "Category": categories,
+        "Link": links,
+        "Agency": agencies
+    }
+    df = pd.DataFrame(data)
+
+    # Step 4: Save to CSV
+    csv_filename = f"enforcement_actions_{year}_{month}.csv"
+    df.to_csv(csv_filename, index=False)
+
+    print(f"Data saved to {csv_filename}")
+    return df
+
+# Example usage: scrape enforcement actions since January 2021
+df = scrape_enforcement_actions(2021, 1)
+
+# Show how many enforcement actions were collected
+print(f"Total number of enforcement actions: {len(df)}")
+
+# Display the earliest enforcement action
+print(f"Earliest enforcement action:\n{df.head(1)}")
+```
+
+```{python}
+pip install vl-convert-python
+
+import altair as alt
+
+# Convert the 'Date' column to datetime type for proper plotting
+df['Date'] = pd.to_datetime(df['Date'], errors='coerce')
+
+# Group by year and month, then count the number of actions
+df['YearMonth'] = df['Date'].dt.to_period('M')  # Create a Year-Month period
+monthly_counts = df.groupby('YearMonth').size().reset_index(name='Number of Actions')
+
+# Plot the line chart using Altair
+line_chart = alt.Chart(monthly_counts).mark_line().encode(
+    x='YearMonth:T',
+    y='Number of Actions:Q'
+).properties(title="Number of Enforcement Actions Over Time (Since January 2021)")
+
+line_chart.show()
 ```
 
 ## Step 3: Plot data based on scraped data
