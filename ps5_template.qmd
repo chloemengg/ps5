@@ -185,29 +185,47 @@ async def fetch(session, url):
     async with session.get(url) as response:
         return await response.text()
 
-async def scrape_page(session, page_number, start_date, titles, dates, categories, links):
+async def fetch_agency(session, link):
+    """Fetches the agency name from the action detail page."""
+    try:
+        html = await fetch(session, link)
+        soup = BeautifulSoup(html, 'html.parser')
+        
+        agency_name = "Not Found"
+        for label in soup.find_all('span'):
+            if "Agency:" in label.get_text():
+                agency_name = label.find_next_sibling(text=True).strip() if label.find_next_sibling(text=True) else "Not Found"
+                break
+        return agency_name
+    except Exception as e:
+        print(f"Error fetching agency for {link}: {e}")
+        return "Not Found"
+
+async def scrape_page(session, page_number, start_date, titles, dates, categories, links, agencies):
     url = f"https://oig.hhs.gov/fraud/enforcement/?page={page_number}"
     print(f"Scraping page {page_number}...")
-    
+
     html = await fetch(session, url)
     soup = BeautifulSoup(html, 'html.parser')
     actions = soup.select('li.usa-card.card--list.pep-card--minimal')
 
     if not actions:
         print(f"No actions found on page {page_number}.")
-        return False
+        return False  
+
+    page_reached_start_date = False
 
     for action in actions:
         title_tag = action.select_one('h2.usa-card__heading a')
         title = title_tag.get_text(strip=True)
         link = f"https://oig.hhs.gov{title_tag['href']}"
-
+        
         date_str = action.select_one('span.text-base-dark').get_text(strip=True)
         action_date = datetime.strptime(date_str, "%B %d, %Y")
 
         if action_date < start_date:
-            print("Reached actions before start date.")
-            return False
+            page_reached_start_date = True
+            break  # Stop processing further actions on this page if before start_date
 
         category = action.select_one('li.usa-tag').get_text(strip=True)
         
@@ -216,28 +234,33 @@ async def scrape_page(session, page_number, start_date, titles, dates, categorie
         categories.append(category)
         links.append(link)
 
-    return True
+        agency_name = await fetch_agency(session, link)
+        agencies.append(agency_name)
 
-async def scrape_enforcement_actions(year, month, max_pages=480):
+    return not page_reached_start_date
+
+async def scrape_enforcement_actions(year, month, max_pages=480, batch_size=10):
     start_date = datetime(year, month, 1)
-    titles, dates, categories, links = [], [], [], []
+    titles, dates, categories, links, agencies = [], [], [], [], []
 
     async with aiohttp.ClientSession() as session:
-        tasks = []
-        
-        for page_number in range(1, max_pages + 1):
-            tasks.append(scrape_page(session, page_number, start_date, titles, dates, categories, links))
-        
-        results = await asyncio.gather(*tasks)
-        
-        if any(result is False for result in results):
-            print("Stopped scraping due to date limit.")
+        for start_page in range(1, max_pages + 1, batch_size):
+            tasks = [
+                scrape_page(session, page_number, start_date, titles, dates, categories, links, agencies)
+                for page_number in range(start_page, min(start_page + batch_size, max_pages + 1))
+            ]
+
+            results = await asyncio.gather(*tasks)
+            if not all(results): 
+                print("Stopping scraping as reached entries before start_date.")
+                break
 
     data = {
         "Title": titles,
         "Date": dates,
         "Category": categories,
         "Link": links,
+        "Agency": agencies
     }
     df = pd.DataFrame(data)
     csv_filename = f"enforcement_actions_{year}_{month}.csv"
@@ -250,28 +273,22 @@ async def scrape_enforcement_actions(year, month, max_pages=480):
 
 year, month = 2023, 1
 await scrape_enforcement_actions(year, month)
+
 ```
 
-There are 1506 actions I got in my data frame. The earliest date that I got is: Man Arrested In $400,000 Medicaid Fraud Case	March 22, 2023	State Enforcement Agencies	https://oig.hhs.gov/fraud/enforcement/man-arre...
+There are 1510 records that I got. The earliest date in data was on Feb 7, 2023.
+Twenty-Three Individuals Charged In $61.5 Mill...	February 7, 2023	Criminal and Civil Actions	https://oig.hhs.gov/fraud/enforcement/twenty-t...	U.S. Department of Justice.
   
 * c. Test Partner's Code (PARTNER 1)
 
 ```{python}
+# Set the start date to January 2021
 year, month = 2021, 1
-df_jan_2021 = await scrape_enforcement_actions(year, month)
-
-if not df_jan_2021.empty:
-    total_actions = len(df_jan_2021)
-    print(f"Total enforcement actions collected: {total_actions}")
-
-    df_jan_2021['Date'] = pd.to_datetime(df_jan_2021['Date'])
-    earliest_action = df_jan_2021.sort_values(by='Date').iloc[0] 
-    print("\nDetails of the earliest enforcement action:")
-    print(earliest_action)
-else:
-    print("No data collected. Please ensure the scraping function ran successfully.")
-
+await scrape_enforcement_actions(year, month, batch_size=50)
 ```
+
+There are 2998 records that I got. The earliest date in data was on September 17, 2021. 
+Gloucester County Man Charged with Fraud for R...	September 17, 2021	Criminal and Civil Actions	https://oig.hhs.gov/fraud/enforcement/gloucest...
 
 
 ## Step 3: Plot data based on scraped data
@@ -381,13 +398,89 @@ line_chart
 
 ### 1. Map by State (PARTNER 1)
 
+```{python}
+import geopandas as gpd
+import matplotlib.pyplot as plt
+
+enforcement_data = pd.read_csv('enforcement_actions_2023_1.csv')
+
+state_shapefile_path = 'cb_2018_us_state_5m.shp'
+states = gpd.read_file(state_shapefile_path)
+
+```
 
 
+```{python}
+state_actions = enforcement_data[enforcement_data['Agency'].str.contains("State of", na=False)]
+
+state_actions['State'] = state_actions['Agency'].str.extract(r"State of (\w+)")
+state_actions['State'] = state_actions['State'].str.strip()  
+
+state_counts = state_actions['State'].value_counts().reset_index()
+state_counts.columns = ['State', 'Enforcement_Count']
+
+state_choropleth = states.merge(state_counts, how="left", left_on="NAME", right_on="State")
+
+plt.figure(figsize=(15, 10))
+state_choropleth.plot(column='Enforcement_Count', cmap='OrRd', legend=True, edgecolor="black")
+plt.title("State-Level Enforcement Actions by State")
+plt.axis("off")
+plt.show()
+```
+
+![map by state](graph1.png)
 
 ### 2. Map by District (PARTNER 2)
 
 ```{python}
+district_shapefile_path = 'geo_export_fcd06d4e-838a-449a-979d-dfc51a522ff4.shp'
+district= gpd.read_file(district_shapefile_path)
+print(district.columns)
+```
 
+```{python}
+enforcement_data = pd.read_csv('enforcement_actions_2023_1.csv')
+print(enforcement_data.columns)
+
+enforcement_data = pd.read_csv('enforcement_actions_2023_1.csv')
+
+# Filter for entries that mention "District" to isolate district-level actions
+district_actions = enforcement_data[enforcement_data['Agency'].str.contains("District", na=False)]
+
+# Extract and clean district names from 'Agency' (assuming 'District of <Name>' or similar format)
+# Adjust regex as necessary to capture other naming variations in your data
+district_actions['District'] = district_actions['Agency'].str.extract(r'(.*District of .+?)')[0]
+district_actions['District'] = district_actions['District'].str.strip()
+
+# Count the number of enforcement actions by district
+district_counts = district_actions['District'].value_counts().reset_index()
+district_counts.columns = ['District', 'Enforcement_Count']
+
+# Standardize district names to match shapefile (e.g., removing extra spaces or characters)
+district_counts['District'] = district_counts['District'].str.replace(r'\s+', ' ', regex=True).str.strip()
+district['judicial_d'] = district['judicial_d'].str.replace(r'\s+', ' ', regex=True).str.strip()
+
+# Merge the cleaned counts with the district shapefile using 'judicial_d'
+district_choropleth = district.merge(district_counts, how="left", left_on="judicial_d", right_on="District")
+
+# Plot the choropleth map
+plt.figure(figsize=(15, 10))
+district_choropleth.plot(column='Enforcement_Count', cmap='Blues', legend=True, edgecolor="black")
+plt.title("US Attorney District-Level Enforcement Actions")
+plt.axis("off")
+plt.show()
+
+```
+
+```{python}
+print(district_counts['District'].unique())
+print(district['judicial_d'].unique())
+
+```
+
+```{python}
+print(district_choropleth[['judicial_d', 'Enforcement_Count']].head())
+print(district_choropleth['Enforcement_Count'].isna().sum())
 ```
 
 ## Extra Credit
