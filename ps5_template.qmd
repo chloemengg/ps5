@@ -1,7 +1,7 @@
 ---
-title: "zhzh"
-author: "author"
-date: "date"
+title: "PS 5"
+author: "Yuting Meng, Yunzhou Guo"
+date: "November 7, 2024"
 format: 
   pdf:
     include-in-header: 
@@ -26,12 +26,12 @@ output:
 ## Submission Steps (10 pts)
 1. This problem set is a paired problem set.
 2. Play paper, scissors, rock to determine who goes first. Call that person *Partner 1*.
-    - Partner 1 (name and cnet ID):
-    - Partner 2 (name and cnet ID):
+    - Partner 1 (name and cnet ID): Yuting Meng, yutingm
+    - Partner 2 (name and cnet ID): Yunzhou Guo, guoy
 3. Partner 1 will accept the `ps5` and then share the link it creates with their partner. You can only share it with one partner so you will not be able to change it after your partner has accepted. 
-4. "This submission is our work alone and complies with the 30538 integrity policy." Add your initials to indicate your agreement: \*\*\_\_\*\* \*\*\_\_\*\*
+4. "This submission is our work alone and complies with the 30538 integrity policy." Add your initials to indicate your agreement: YM, YG
 5. "I have uploaded the names of anyone else other than my partner and I worked with on the problem set **[here](https://docs.google.com/forms/d/185usrCREQaUbvAXpWhChkjghdGgmAZXA3lPWpXLLsts/edit)**"  (1 point)
-6. Late coins used this pset: \*\*\_\_\*\* Late coins left after submission: \*\*\_\_\*\*
+6. Late coins used this pset: 0 Late coins left after submission: 3
 7. Knit your `ps5.qmd` to an PDF file to make `ps5.pdf`, 
     * The PDF should not be more than 25 pages. Use `head()` and re-size figures when appropriate. 
 8. (Partner 1): push  `ps5.qmd` and `ps5.pdf` to your github repo.
@@ -93,11 +93,10 @@ data = {
     "Link": links
 }
 df = pd.DataFrame(data)
-
-df
 ```
 
-  
+![Table 1](table1.png)
+
 ### 2. Crawling (PARTNER 1)
 
 ```{python}
@@ -143,10 +142,9 @@ data = {
 }
 
 df = pd.DataFrame(data)
-
-df
 ```
 
+![Table 2](table2.png)
 
 ## Step 2: Making the scraper dynamic
 
@@ -198,12 +196,11 @@ async def fetch_agency(session, link):
                 break
         return agency_name
     except Exception as e:
-        print(f"Error fetching agency for {link}: {e}")
-        return "Not Found"
+            print(f"Error fetching agency for {link}: {e}") 
+            return "Not Found"
 
 async def scrape_page(session, page_number, start_date, titles, dates, categories, links, agencies):
     url = f"https://oig.hhs.gov/fraud/enforcement/?page={page_number}"
-    print(f"Scraping page {page_number}...")
 
     html = await fetch(session, url)
     soup = BeautifulSoup(html, 'html.parser')
@@ -225,8 +222,7 @@ async def scrape_page(session, page_number, start_date, titles, dates, categorie
 
         if action_date < start_date:
             page_reached_start_date = True
-            break  # Stop processing further actions on this page if before start_date
-
+            break  
         category = action.select_one('li.usa-tag').get_text(strip=True)
         
         titles.append(title)
@@ -282,7 +278,6 @@ Twenty-Three Individuals Charged In $61.5 Mill...	February 7, 2023	Criminal and 
 * c. Test Partner's Code (PARTNER 1)
 
 ```{python}
-# Set the start date to January 2021
 year, month = 2021, 1
 await scrape_enforcement_actions(year, month, batch_size=50)
 ```
@@ -299,37 +294,37 @@ Gloucester County Man Charged with Fraud for R...	September 17, 2021	Criminal an
 import pandas as pd
 import altair as alt
 
-df_jan_2021['Date'] = pd.to_datetime(df_jan_2021['Date'])
-df_jan_2021['Year_Month'] = df_jan_2021['Date'].dt.to_period('M')
+df = pd.read_csv('enforcement_actions_2021_1.csv')
+df['Date'] = pd.to_datetime(df['Date'])
 
-monthly_counts = df_jan_2021.groupby('Year_Month').size().reset_index(name='Count')
-monthly_counts['Year_Month'] = monthly_counts['Year_Month'].dt.to_timestamp()
+df['YearMonth'] = df['Date'].dt.to_period('M')
+monthly_counts = df.groupby('YearMonth').size().reset_index(name='Count')
+monthly_counts['YearMonth'] = monthly_counts['YearMonth'].dt.to_timestamp()
 
-line_chart = alt.Chart(monthly_counts).mark_line().encode(
-    x=alt.X('Year_Month:T', title='Date'),
-    y=alt.Y('Count:Q', title='Number of Enforcement Actions'),
-    tooltip=['Year_Month:T', 'Count:Q']
+chart = alt.Chart(monthly_counts).mark_line().encode(
+    x='YearMonth:T',
+    y='Count:Q',
+    tooltip=['YearMonth:T', 'Count:Q']
 ).properties(
-    title='Number of Enforcement Actions Over Time (Aggregated by Month and Year)',
-    width=600,
-    height=400
+    title="Number of Enforcement Actions Over Time (Monthly Aggregation)",
+    width=400,
+    height=300
 )
 
-line_chart.show()
+chart
 ```
 
-![Number of Enforcement Actions Over time](chart1.png)
 
 ### 2. Plot the number of enforcement actions categorized: (PARTNER 1)
 
 * based on "Criminal and Civil Actions" vs. "State Enforcement Agencies"
 
 ```{python}
-df_jan_2021['Date'] = pd.to_datetime(df_jan_2021['Date'])
+df['Date'] = pd.to_datetime(df['Date'])
 
-df_jan_2021['Year_Month'] = df_jan_2021['Date'].dt.to_period('M')
+df['Year_Month'] = df['Date'].dt.to_period('M')
 
-monthly_counts = df_jan_2021.groupby(['Year_Month', 'Category']).size().reset_index(name='Count')
+monthly_counts = df.groupby(['Year_Month', 'Category']).size().reset_index(name='Count')
 monthly_counts['Year_Month'] = monthly_counts['Year_Month'].dt.to_timestamp()  
 
 monthly_counts = monthly_counts[monthly_counts['Category'].isin(["Criminal and Civil Actions", "State Enforcement Agencies"])]
@@ -341,14 +336,13 @@ line_chart = alt.Chart(monthly_counts).mark_line().encode(
     tooltip=['Year_Month:T', 'Category:N', 'Count:Q']
 ).properties(
     title='Number of Enforcement Actions Over Time by Category',
-    width=700,
-    height=400
+    width=400,
+    height=300
 )
 
 line_chart
 ```
 
-![criminal vs. enforcement](chart2.png)
 
 * based on five topics
 
@@ -367,12 +361,12 @@ def classify_topic(title):
     else:
         return "Other"
 
-df_jan_2021['Topic'] = df_jan_2021.apply(
+df['Topic'] = df.apply(
     lambda row: classify_topic(row['Title']) if row['Category'] == "Criminal and Civil Actions" else "State Enforcement Agencies", 
     axis=1
 )
 
-monthly_counts = df_jan_2021.groupby(['Year_Month', 'Topic']).size().reset_index(name='Count')
+monthly_counts = df.groupby(['Year_Month', 'Topic']).size().reset_index(name='Count')
 monthly_counts['Year_Month'] = monthly_counts['Year_Month'].dt.to_timestamp()
 
 line_chart = alt.Chart(monthly_counts).mark_line().encode(
@@ -385,14 +379,13 @@ line_chart = alt.Chart(monthly_counts).mark_line().encode(
     tooltip=['Year_Month:T', 'Topic:N', 'Count:Q']
 ).properties(
     title='Number of Enforcement Actions Over Time by Topic',
-    width=700,
-    height=400
+    width=400,
+    height=300
 )
 
 line_chart
 ```
 
-![five topics](chart3.png)
 
 ## Step 4: Create maps of enforcement activity
 
@@ -428,74 +421,40 @@ plt.axis("off")
 plt.show()
 ```
 
-![map by state](graph1.png)
 
 ### 2. Map by District (PARTNER 2)
 
 ```{python}
+import re
+
 district_shapefile_path = 'geo_export_fcd06d4e-838a-449a-979d-dfc51a522ff4.shp'
-district= gpd.read_file(district_shapefile_path)
-print(district.columns)
-```
-
-```{python}
-enforcement_data = pd.read_csv('enforcement_actions_2023_1.csv')
-print(enforcement_data.columns)
-
+district = gpd.read_file(district_shapefile_path)
 enforcement_data = pd.read_csv('enforcement_actions_2023_1.csv')
 
-# Filter for entries that mention "District" to isolate district-level actions
 district_actions = enforcement_data[enforcement_data['Agency'].str.contains("District", na=False)]
 
-# Extract and clean district names from 'Agency' (assuming 'District of <Name>' or similar format)
-# Adjust regex as necessary to capture other naming variations in your data
-district_actions['District'] = district_actions['Agency'].str.extract(r'(.*District of .+?)')[0]
-district_actions['District'] = district_actions['District'].str.strip()
+district_names = district_actions['Agency'].str.extract(r"(Western|Eastern|Northern|Southern|Central)?\s?District of (\w+)")
 
-# Count the number of enforcement actions by district
+district_actions['District'] = district_names[0].fillna('') + ' District of ' + district_names[1]
+
 district_counts = district_actions['District'].value_counts().reset_index()
 district_counts.columns = ['District', 'Enforcement_Count']
 
-# Standardize district names to match shapefile (e.g., removing extra spaces or characters)
-district_counts['District'] = district_counts['District'].str.replace(r'\s+', ' ', regex=True).str.strip()
-district['judicial_d'] = district['judicial_d'].str.replace(r'\s+', ' ', regex=True).str.strip()
+district_counts['District'] = district_counts['District'].str.strip()
+district['judicial_d'] = district['judicial_d'].str.strip()
 
-# Merge the cleaned counts with the district shapefile using 'judicial_d'
 district_choropleth = district.merge(district_counts, how="left", left_on="judicial_d", right_on="District")
 
-# Plot the choropleth map
-plt.figure(figsize=(15, 10))
-district_choropleth.plot(column='Enforcement_Count', cmap='Blues', legend=True, edgecolor="black")
-plt.title("US Attorney District-Level Enforcement Actions")
+fig, ax = plt.subplots(figsize=(10, 5))
+
+district_choropleth.plot(column='Enforcement_Count', cmap='Blues', legend=True, edgecolor="black", ax=ax)
+
+ax.set_xlim(-130, -65) 
+ax.set_ylim(24, 50)
+
+plt.title("US Attorney District-Level Enforcement Actions", fontsize=18)
 plt.axis("off")
+
 plt.show()
-
 ```
 
-```{python}
-print(district_counts['District'].unique())
-print(district['judicial_d'].unique())
-
-```
-
-```{python}
-print(district_choropleth[['judicial_d', 'Enforcement_Count']].head())
-print(district_choropleth['Enforcement_Count'].isna().sum())
-```
-
-## Extra Credit
-
-### 1. Merge zip code shapefile with population
-```{python}
-
-```
-
-### 2. Conduct spatial join
-```{python}
-
-```
-
-### 3. Map the action ratio in each district
-```{python}
-
-```
